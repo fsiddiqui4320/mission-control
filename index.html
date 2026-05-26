@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mission Control — Octo</title>
+<link rel="stylesheet" href="static/css/dashboard.css">
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <h1>🐙 Mission Control</h1>
+      <span id="status-dot" class="status-dot disconnected"></span>
+    </div>
+    <ul class="nav-tabs">
+      <li class="nav-item active" data-tab="tasks">
+        <span class="nav-icon">📋</span> Task Board
+      </li>
+      <li class="nav-item" data-tab="calendar">
+        <span class="nav-icon">📅</span> Calendar
+      </li>
+      <li class="nav-item" data-tab="projects">
+        <span class="nav-icon">📁</span> Projects
+      </li>
+      <li class="nav-item" data-tab="memories">
+        <span class="nav-icon">🧠</span> Memories
+      </li>
+      <li class="nav-item" data-tab="docs">
+        <span class="nav-icon">📄</span> Docs
+      </li>
+      <li class="nav-item" data-tab="team">
+        <span class="nav-icon">👥</span> Team
+      </li>
+      <li class="nav-item" data-tab="office">
+        <span class="nav-icon">🏢</span> Office
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <span id="connection-status">● Connected</span>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main id="content">
+    <!-- API Connection Bar -->
+    <div id="api-bar">
+      <div id="api-status">
+        <span class="api-indicator disconnected"></span>
+        <span id="api-label">No API connected</span>
+      </div>
+      <div id="api-config">
+        <input type="text" id="api-url" placeholder="http://localhost:5555" value="http://localhost:5555">
+        <button id="api-connect-btn">Connect</button>
+      </div>
+    </div>
+    <div id="tab-tasks" class="tab-content active">
+      <h2>Task Board</h2>
+      <div id="kanban" class="kanban">
+        <div class="kanban-col" id="col-todo"><h3>To Do</h3><div class="kanban-items"></div></div>
+        <div class="kanban-col" id="col-progress"><h3>In Progress</h3><div class="kanban-items"></div></div>
+        <div class="kanban-col" id="col-done"><h3>Done</h3><div class="kanban-items"></div></div>
+      </div>
+    </div>
+
+    <div id="tab-calendar" class="tab-content">
+      <h2>Calendar</h2>
+      <div id="calendar-grid">Loading...</div>
+    </div>
+
+    <div id="tab-projects" class="tab-content">
+      <h2>Projects</h2>
+      <div id="projects-grid" class="card-grid">Loading...</div>
+    </div>
+
+    <div id="tab-memories" class="tab-content">
+      <h2>Memories</h2>
+      <div id="memories-list">Loading...</div>
+    </div>
+
+    <div id="tab-docs" class="tab-content">
+      <h2>Documents</h2>
+      <div id="docs-list">Loading...</div>
+    </div>
+
+    <div id="tab-team" class="tab-content">
+      <h2>Team</h2>
+      <div id="team-grid" class="card-grid">Loading...</div>
+    </div>
+
+    <div id="tab-office" class="tab-content">
+      <h2>Office</h2>
+      <div id="office-feed">Loading...</div>
+    </div>
+  </main>
+</div>
+
+<script src="static/js/app.js"></script>
+<script src="static/js/tasks.js"></script>
+<script src="static/js/calendar.js"></script>
+<script src="static/js/projects.js"></script>
+<script src="static/js/memories.js"></script>
+<script src="static/js/docs.js"></script>
+<script src="static/js/team.js"></script>
+<script src="static/js/office.js"></script>
+</body>
+</html>
