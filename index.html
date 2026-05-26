@@ -2,49 +2,63 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Mission Control — Octo</title>
 <link rel="stylesheet" href="static/css/dashboard.css">
 </head>
 <body>
 <div id="app">
-  <!-- Sidebar -->
+
+  <!-- Mobile top bar (hidden on tablet+) -->
+  <header id="mobile-header">
+    <button id="hamburger" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+    <span id="mobile-title">🐙 Mission Control</span>
+    <span id="mobile-status" class="disconnected"></span>
+  </header>
+
+  <!-- Overlay (mobile sidebar backdrop) -->
+  <div id="sidebar-overlay"></div>
+
+  <!-- Sidebar nav -->
   <nav id="sidebar">
     <div class="sidebar-header">
       <h1>🐙 Mission Control</h1>
       <span id="status-dot" class="status-dot disconnected"></span>
     </div>
     <ul class="nav-tabs">
-      <li class="nav-item active" data-tab="tasks">
-        <span class="nav-icon">📋</span> Task Board
+      <li class="nav-item active" data-tab="tasks" data-tooltip="Task Board">
+        <span class="nav-icon">📋</span><span class="nav-label">Task Board</span>
       </li>
-      <li class="nav-item" data-tab="calendar">
-        <span class="nav-icon">📅</span> Calendar
+      <li class="nav-item" data-tab="calendar" data-tooltip="Calendar">
+        <span class="nav-icon">📅</span><span class="nav-label">Calendar</span>
       </li>
-      <li class="nav-item" data-tab="projects">
-        <span class="nav-icon">📁</span> Projects
+      <li class="nav-item" data-tab="projects" data-tooltip="Projects">
+        <span class="nav-icon">📁</span><span class="nav-label">Projects</span>
       </li>
-      <li class="nav-item" data-tab="memories">
-        <span class="nav-icon">🧠</span> Memories
+      <li class="nav-item" data-tab="memories" data-tooltip="Memories">
+        <span class="nav-icon">🧠</span><span class="nav-label">Memories</span>
       </li>
-      <li class="nav-item" data-tab="docs">
-        <span class="nav-icon">📄</span> Docs
+      <li class="nav-item" data-tab="docs" data-tooltip="Docs">
+        <span class="nav-icon">📄</span><span class="nav-label">Docs</span>
       </li>
-      <li class="nav-item" data-tab="team">
-        <span class="nav-icon">👥</span> Team
+      <li class="nav-item" data-tab="team" data-tooltip="Team">
+        <span class="nav-icon">👥</span><span class="nav-label">Team</span>
       </li>
-      <li class="nav-item" data-tab="office">
-        <span class="nav-icon">🏢</span> Office
+      <li class="nav-item" data-tab="office" data-tooltip="Office">
+        <span class="nav-icon">🏢</span><span class="nav-label">Office</span>
       </li>
     </ul>
     <div class="sidebar-footer">
-      <span id="connection-status">● Connected</span>
+      <span id="connection-status">● Disconnected</span>
     </div>
   </nav>
 
-  <!-- Main Content -->
+  <!-- Main content -->
   <main id="content">
-    <!-- API Connection Bar -->
+
+    <!-- API connection bar -->
     <div id="api-bar">
       <div id="api-status">
         <span class="api-indicator disconnected"></span>
@@ -55,44 +69,77 @@
         <button id="api-connect-btn">Connect</button>
       </div>
     </div>
+
+    <!-- Task Board -->
     <div id="tab-tasks" class="tab-content active">
       <h2>Task Board</h2>
       <div id="kanban" class="kanban">
-        <div class="kanban-col" id="col-todo"><h3>To Do</h3><div class="kanban-items"></div></div>
-        <div class="kanban-col" id="col-progress"><h3>In Progress</h3><div class="kanban-items"></div></div>
-        <div class="kanban-col" id="col-done"><h3>Done</h3><div class="kanban-items"></div></div>
+        <div class="kanban-col" id="col-todo">
+          <div class="kanban-col-header">
+            <h3>To Do</h3>
+            <span class="col-count" id="count-todo">0</span>
+          </div>
+          <div class="kanban-items" id="items-todo"></div>
+        </div>
+        <div class="kanban-col" id="col-progress">
+          <div class="kanban-col-header">
+            <h3>In Progress</h3>
+            <span class="col-count" id="count-progress">0</span>
+          </div>
+          <div class="kanban-items" id="items-progress"></div>
+        </div>
+        <div class="kanban-col" id="col-done">
+          <div class="kanban-col-header">
+            <h3>Done</h3>
+            <span class="col-count" id="count-done">0</span>
+          </div>
+          <div class="kanban-items" id="items-done"></div>
+        </div>
       </div>
     </div>
 
+    <!-- Calendar -->
     <div id="tab-calendar" class="tab-content">
       <h2>Calendar</h2>
-      <div id="calendar-grid">Loading...</div>
+      <div id="calendar-grid"></div>
     </div>
 
+    <!-- Projects -->
     <div id="tab-projects" class="tab-content">
       <h2>Projects</h2>
-      <div id="projects-grid" class="card-grid">Loading...</div>
+      <div id="projects-grid" class="card-grid"><div class="loading">Connect API to load projects</div></div>
     </div>
 
+    <!-- Memories -->
     <div id="tab-memories" class="tab-content">
       <h2>Memories</h2>
-      <div id="memories-list">Loading...</div>
+      <div class="search-bar">
+        <input type="search" id="memory-search" class="search-input" placeholder="Search memories…">
+      </div>
+      <div id="memories-list"><div class="loading">Connect API to load memories</div></div>
     </div>
 
+    <!-- Docs -->
     <div id="tab-docs" class="tab-content">
       <h2>Documents</h2>
-      <div id="docs-list">Loading...</div>
+      <div class="search-bar">
+        <input type="search" id="docs-search" class="search-input" placeholder="Search documents…">
+      </div>
+      <div id="docs-list"><div class="loading">Connect API to load documents</div></div>
     </div>
 
+    <!-- Team -->
     <div id="tab-team" class="tab-content">
       <h2>Team</h2>
-      <div id="team-grid" class="card-grid">Loading...</div>
+      <div id="team-list"></div>
     </div>
 
+    <!-- Office -->
     <div id="tab-office" class="tab-content">
       <h2>Office</h2>
-      <div id="office-feed">Loading...</div>
+      <div id="office-feed"></div>
     </div>
+
   </main>
 </div>
 

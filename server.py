@@ -2,129 +2,260 @@
 """Mission Control - lightweight API server for the OpenClaw dashboard."""
 import json
 import os
+import re
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
-import subprocess
+from urllib.parse import urlparse
 import datetime
 
-WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
+WORKSPACE    = Path(os.path.expanduser("~/.openclaw/workspace"))
 PROJECTS_DIR = WORKSPACE / "projects"
-MEMORY_DIR = WORKSPACE / "memory"
+MEMORY_DIR   = WORKSPACE / "memory"
+
+# Skip hidden dirs and common noise
+SKIP_DIRS = {'.git', '.vercel', 'node_modules', '__pycache__', '.DS_Store'}
+
 
 class APIHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
-        
-        # API routes
-        if parsed.path == "/api/status":
-            self._json({"status": "ok", "workspace": str(WORKSPACE)})
+        route  = parsed.path
+
+        routes = {
+            "/api/status":   self._status,
+            "/api/projects": self._projects,
+            "/api/memories": self._memories,
+            "/api/docs":     self._docs,
+            "/api/tasks":    self._tasks,
+            "/api/cron":     self._cron,
+            "/api/activity": self._activity,
+            "/api/team":     self._team,
+        }
+
+        handler = routes.get(route)
+        if handler:
+            self._json(handler())
             return
-        
-        if parsed.path == "/api/projects":
-            self._json(self._list_projects())
-            return
-        
-        if parsed.path == "/api/memories":
-            self._json(self._list_memories())
-            return
-        
-        if parsed.path == "/api/docs":
-            self._json(self._list_docs())
-            return
-        
-        if parsed.path == "/api/tasks":
-            self._json(self._list_tasks())
-            return
-        
-        if parsed.path == "/api/cron":
-            self._json(self._list_cron())
-            return
-            
-        # Serve static files
-        if self.path == "/" or self.path == "":
+
+        if self.path in ("/", ""):
             self.path = "/index.html"
         return SimpleHTTPRequestHandler.do_GET(self)
-    
+
+    def log_message(self, fmt, *args):
+        # Suppress static file noise; only log API calls
+        if '/api/' in args[0] if args else False:
+            super().log_message(fmt, *args)
+
     def _json(self, data):
+        body = json.dumps(data, default=str).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(json.dumps(data, default=str).encode())
-    
-    def _list_projects(self):
+        self.wfile.write(body)
+
+    # ── Route handlers ────────────────────────────────────────
+
+    def _status(self):
+        return {
+            "status":    "ok",
+            "workspace": str(WORKSPACE),
+            "exists":    WORKSPACE.exists(),
+        }
+
+    def _projects(self):
         projects = []
-        if PROJECTS_DIR.exists():
-            for d in sorted(PROJECTS_DIR.iterdir()):
-                if d.is_dir() and not d.name.startswith('.'):
-                    spec = d / "SPEC.md"
-                    projects.append({
-                        "name": d.name,
-                        "path": str(d),
-                        "has_spec": spec.exists(),
-                        "modified": datetime.datetime.fromtimestamp(d.stat().st_mtime).isoformat()
-                    })
+        if not PROJECTS_DIR.exists():
+            return projects
+        for d in sorted(PROJECTS_DIR.iterdir()):
+            if not d.is_dir() or d.name.startswith('.'):
+                continue
+            spec   = d / "SPEC.md"
+            files  = [f for f in d.rglob("*") if f.is_file() and not self._skip(f)]
+            tasks  = self._count_tasks_in_dir(d)
+            mtime  = d.stat().st_mtime
+            projects.append({
+                "name":       d.name,
+                "path":       str(d),
+                "has_spec":   spec.exists(),
+                "file_count": len(files),
+                "task_count": tasks,
+                "modified":   datetime.datetime.fromtimestamp(mtime).isoformat(),
+            })
         return projects
-    
-    def _list_memories(self):
+
+    def _memories(self):
         memories = {"daily": [], "areas": [], "resources": [], "other": []}
-        if MEMORY_DIR.exists():
-            for f in sorted(MEMORY_DIR.rglob("*.md")):
-                rel = str(f.relative_to(MEMORY_DIR))
-                entry = {
-                    "name": f.stem,
-                    "path": str(f),
-                    "relative": rel,
-                    "size": f.stat().st_size,
-                    "modified": datetime.datetime.fromtimestamp(f.stat().st_mtime).isoformat()
-                }
-                if rel.startswith("areas/"):
-                    memories["areas"].append(entry)
-                elif rel.startswith("resources/"):
-                    memories["resources"].append(entry)
-                elif rel.startswith("20"):  # YYYY-MM-DD.md
-                    memories["daily"].append(entry)
-                else:
-                    memories["other"].append(entry)
+        if not MEMORY_DIR.exists():
+            return memories
+        for f in sorted(MEMORY_DIR.rglob("*.md")):
+            if self._skip(f):
+                continue
+            rel   = str(f.relative_to(MEMORY_DIR))
+            entry = {
+                "name":     f.stem,
+                "path":     str(f),
+                "relative": rel,
+                "size":     f.stat().st_size,
+                "modified": datetime.datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            }
+            if rel.startswith("areas/"):
+                memories["areas"].append(entry)
+            elif rel.startswith("resources/"):
+                memories["resources"].append(entry)
+            elif re.match(r"^\d{4}", rel):  # YYYY-… files
+                memories["daily"].append(entry)
+            else:
+                memories["other"].append(entry)
         return memories
-    
-    def _list_docs(self):
+
+    def _docs(self):
         docs = []
+        if not WORKSPACE.exists():
+            return docs
         for f in sorted(WORKSPACE.rglob("*.md")):
-            if '/memory/' not in str(f) and '/projects/' not in str(f):
-                docs.append({
-                    "name": f.stem,
-                    "path": str(f),
-                    "size": f.stat().st_size,
-                    "modified": datetime.datetime.fromtimestamp(f.stat().st_mtime).isoformat()
-                })
+            if self._skip(f):
+                continue
+            rel = str(f.relative_to(WORKSPACE))
+            # Exclude memory and project internal files
+            if rel.startswith("memory/") or "/memory/" in rel:
+                continue
+            docs.append({
+                "name":     f.stem,
+                "path":     rel,
+                "size":     f.stat().st_size,
+                "modified": datetime.datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            })
         return docs
-    
-    def _list_tasks(self):
+
+    def _tasks(self):
         tasks = []
-        # Scan workspace for TODO markers
+        if not WORKSPACE.exists():
+            return tasks
         for f in WORKSPACE.rglob("*.md"):
+            if self._skip(f):
+                continue
             try:
-                content = f.read_text()
-                for line in content.split('\n'):
-                    if '- [ ]' in line or 'TODO' in line or 'FIXME' in line:
+                content = f.read_text(encoding="utf-8", errors="ignore")
+                for line in content.split("\n"):
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    status = self._task_status(stripped)
+                    if status:
                         tasks.append({
-                            "title": line.strip(),
+                            "title":  stripped,
                             "source": str(f.relative_to(WORKSPACE)),
-                            "status": "todo" if '- [ ]' in line else "pending"
+                            "status": status,
                         })
-            except:
+            except Exception:
                 pass
-        return tasks[:50]  # limit
-    
-    def _list_cron(self):
-        """Read cron jobs from openclaw config or return placeholder."""
-        return {"jobs": [], "note": "Cron integration pending"}
+        # Sort: in_progress first, then todo, then done
+        order = {"in_progress": 0, "todo": 1, "done": 2}
+        tasks.sort(key=lambda t: order.get(t["status"], 99))
+        return tasks[:80]
+
+    def _cron(self):
+        """Try to load cron configuration from known openclaw paths."""
+        candidates = [
+            Path.home() / ".openclaw" / "crons.json",
+            Path.home() / ".openclaw" / "config" / "crons.json",
+            WORKSPACE / "crons.json",
+            WORKSPACE / "config" / "crons.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                try:
+                    return json.loads(path.read_text())
+                except Exception:
+                    pass
+        return {"jobs": [], "note": "No cron config found"}
+
+    def _activity(self):
+        """Return recently modified files, newest first."""
+        if not WORKSPACE.exists():
+            return []
+        cutoff  = datetime.datetime.now() - datetime.timedelta(days=14)
+        results = []
+        for f in WORKSPACE.rglob("*"):
+            if not f.is_file() or self._skip(f):
+                continue
+            try:
+                mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime)
+                if mtime < cutoff:
+                    continue
+                results.append({
+                    "path":     str(f.relative_to(WORKSPACE)),
+                    "name":     f.name,
+                    "modified": mtime.isoformat(),
+                    "type":     f.suffix.lstrip(".") or "file",
+                })
+            except Exception:
+                pass
+        results.sort(key=lambda x: x["modified"], reverse=True)
+        return results[:40]
+
+    def _team(self):
+        """Return agent roster from config if available."""
+        candidates = [
+            Path.home() / ".openclaw" / "agents.json",
+            Path.home() / ".openclaw" / "config" / "agents.json",
+            WORKSPACE / "agents.json",
+        ]
+        for path in candidates:
+            if path.exists():
+                try:
+                    data = json.loads(path.read_text())
+                    if isinstance(data, list):
+                        return data
+                    if isinstance(data, dict) and "agents" in data:
+                        return data["agents"]
+                except Exception:
+                    pass
+        return []  # JS falls back to defaults
+
+    # ── Helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    def _skip(path: Path) -> bool:
+        return any(part in SKIP_DIRS or part.startswith('.') for part in path.parts)
+
+    @staticmethod
+    def _task_status(line: str):
+        lower = line.lower()
+        # Completed: - [x] or - [X]
+        if re.search(r'-\s*\[[xX]\]', line):
+            return "done"
+        # In progress: - [>] or - [/] or - [~]
+        if re.search(r'-\s*\[[>/~]\]', line):
+            return "in_progress"
+        # Open: - [ ]
+        if re.search(r'-\s*\[\s\]', line):
+            return "todo"
+        # TODO / FIXME markers (not inside done items)
+        if re.search(r'\bTODO\b|\bFIXME\b', line):
+            return "todo"
+        return None
+
+    def _count_tasks_in_dir(self, d: Path) -> int:
+        count = 0
+        for f in d.rglob("*.md"):
+            if self._skip(f):
+                continue
+            try:
+                for line in f.read_text(encoding="utf-8", errors="ignore").split("\n"):
+                    if self._task_status(line.strip()):
+                        count += 1
+            except Exception:
+                pass
+        return count
+
 
 if __name__ == "__main__":
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5555
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    print(f"🚀 Mission Control starting on http://localhost:{port}")
+    print(f"🚀 Mission Control on http://localhost:{port}")
+    print(f"   Workspace: {WORKSPACE}")
     HTTPServer(("127.0.0.1", port), APIHandler).serve_forever()
