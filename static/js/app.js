@@ -142,12 +142,62 @@ async function connectAPI() {
 apiConnectBtn.addEventListener('click', connectAPI);
 apiUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') connectAPI(); });
 
-// Auto-connect on load
-connectAPI();
+// ── Tunnel URL discovery ──────────────────────────────────────
 
-// Auto-demo: if connect fails and we're not on localhost, enable demo mode
-setTimeout(() => {
-  if (!API_BASE && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+const TUNNEL_DISCOVERY_URL = 'https://raw.githubusercontent.com/fsiddiqui4320/mission-control/main/tunnel-url.txt';
+
+async function discoverTunnelURL() {
+  try {
+    const res = await fetch(TUNNEL_DISCOVERY_URL, { cache: 'no-cache' });
+    if (res.ok) {
+      const url = (await res.text()).trim();
+      if (url.startsWith('https://') && url.includes('trycloudflare.com')) {
+        return url;
+      }
+    }
+  } catch (e) {
+    console.log('Tunnel discovery failed, will try localhost/demo');
+  }
+  return null;
+}
+
+async function autoConnect() {
+  // 1. Try GitHub-discovered tunnel URL first (works from anywhere)
+  const tunnelURL = await discoverTunnelURL();
+  if (tunnelURL) {
+    API_BASE = tunnelURL;
+    apiUrlInput.value = tunnelURL;
+    const status = await API.get('/api/status');
+    if (status && status.status === 'ok') {
+      setConnected(status.workspace + ' (tunnel)');
+      const active = document.querySelector('.tab-content.active');
+      if (active) {
+        const name = active.id.replace('tab-', '');
+        const handler = tabLoaders[name];
+        if (handler) handler();
+      }
+      return;
+    }
+    API_BASE = '';
+  }
+
+  // 2. Try localhost
+  API_BASE = apiUrlInput.value.replace(/\/$/, '');
+  const status = await API.get('/api/status');
+  if (status && status.status === 'ok') {
+    setConnected(status.workspace);
+    const active = document.querySelector('.tab-content.active');
+    if (active) {
+      const name = active.id.replace('tab-', '');
+      const handler = tabLoaders[name];
+      if (handler) handler();
+    }
+    return;
+  }
+
+  // 3. Fall back to demo mode (non-localhost only)
+  API_BASE = '';
+  if (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
     DEMO_MODE = true;
     setConnected('octo-workspace (demo)');
     apiUrlInput.placeholder = 'Demo mode — no server needed';
@@ -157,8 +207,13 @@ setTimeout(() => {
       const handler = tabLoaders[name];
       if (handler) handler();
     }
+  } else {
+    setDisconnected('Connection failed');
   }
-}, 1500);
+}
+
+// Auto-connect on load
+autoConnect();
 
 // ── Mobile sidebar ────────────────────────────────────────────
 

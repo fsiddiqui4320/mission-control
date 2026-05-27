@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.octo.mission-control-server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/bigclaw/.openclaw/workspace/projects/mission-control/server.py</string>
+        <string>5555</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>WorkingDirectory</key>
+    <string>/Users/bigclaw/.openclaw/workspace/projects/mission-control</string>
+    <key>StandardOutPath</key>
+    <string>/Users/bigclaw/.openclaw/workspace/projects/mission-control/logs/server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/bigclaw/.openclaw/workspace/projects/mission-control/logs/server-err.log</string>
+</dict>
+</plist>
