@@ -13,7 +13,36 @@ PROJECTS_DIR = WORKSPACE / "projects"
 MEMORY_DIR   = WORKSPACE / "memory"
 
 # Skip hidden dirs and common noise
-SKIP_DIRS = {'.git', '.vercel', 'node_modules', '__pycache__', '.DS_Store'}
+SKIP_DIRS = {'.git', '.vercel', 'node_modules', '__pycache__', '.DS_Store', '.next', 'dist', 'build'}
+SKIP_FILE_EXTENSIONS = {'.pyc', '.pyo', '.map', '.lock', '.bin'}
+
+
+def safe_walk(directory: Path):
+    """Walk directory tree, skipping noise dirs at traversal level."""
+    try:
+        for entry in sorted(directory.iterdir()):
+            if entry.name.startswith('.') or entry.name in SKIP_DIRS:
+                continue
+            if entry.is_dir():
+                yield from safe_walk(entry)
+            elif entry.is_file() and entry.suffix not in SKIP_FILE_EXTENSIONS:
+                yield entry
+    except PermissionError:
+        pass
+
+
+def safe_md_walk(directory: Path):
+    """Walk directory tree for .md files only, skipping noise dirs."""
+    try:
+        for entry in sorted(directory.iterdir()):
+            if entry.name.startswith('.') or entry.name in SKIP_DIRS:
+                continue
+            if entry.is_dir():
+                yield from safe_md_walk(entry)
+            elif entry.is_file() and entry.suffix == '.md':
+                yield entry
+    except PermissionError:
+        pass
 
 
 class APIHandler(SimpleHTTPRequestHandler):
@@ -72,7 +101,7 @@ class APIHandler(SimpleHTTPRequestHandler):
             if not d.is_dir() or d.name.startswith('.'):
                 continue
             spec   = d / "SPEC.md"
-            files  = [f for f in d.rglob("*") if f.is_file() and not self._skip(f)]
+            files  = list(safe_walk(d))
             tasks  = self._count_tasks_in_dir(d)
             mtime  = d.stat().st_mtime
             projects.append({
@@ -89,9 +118,7 @@ class APIHandler(SimpleHTTPRequestHandler):
         memories = {"daily": [], "areas": [], "resources": [], "other": []}
         if not MEMORY_DIR.exists():
             return memories
-        for f in sorted(MEMORY_DIR.rglob("*.md")):
-            if self._skip(f):
-                continue
+        for f in safe_md_walk(MEMORY_DIR):
             rel   = str(f.relative_to(MEMORY_DIR))
             entry = {
                 "name":     f.stem,
@@ -114,9 +141,7 @@ class APIHandler(SimpleHTTPRequestHandler):
         docs = []
         if not WORKSPACE.exists():
             return docs
-        for f in sorted(WORKSPACE.rglob("*.md")):
-            if self._skip(f):
-                continue
+        for f in safe_md_walk(WORKSPACE):
             rel = str(f.relative_to(WORKSPACE))
             # Exclude memory and project internal files
             if rel.startswith("memory/") or "/memory/" in rel:
@@ -133,9 +158,7 @@ class APIHandler(SimpleHTTPRequestHandler):
         tasks = []
         if not WORKSPACE.exists():
             return tasks
-        for f in WORKSPACE.rglob("*.md"):
-            if self._skip(f):
-                continue
+        for f in safe_md_walk(WORKSPACE):
             try:
                 content = f.read_text(encoding="utf-8", errors="ignore")
                 for line in content.split("\n"):
@@ -178,9 +201,7 @@ class APIHandler(SimpleHTTPRequestHandler):
             return []
         cutoff  = datetime.datetime.now() - datetime.timedelta(days=14)
         results = []
-        for f in WORKSPACE.rglob("*"):
-            if not f.is_file() or self._skip(f):
-                continue
+        for f in safe_walk(WORKSPACE):
             try:
                 mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime)
                 if mtime < cutoff:
@@ -240,9 +261,7 @@ class APIHandler(SimpleHTTPRequestHandler):
 
     def _count_tasks_in_dir(self, d: Path) -> int:
         count = 0
-        for f in d.rglob("*.md"):
-            if self._skip(f):
-                continue
+        for f in safe_md_walk(d):
             try:
                 for line in f.read_text(encoding="utf-8", errors="ignore").split("\n"):
                     if self._task_status(line.strip()):

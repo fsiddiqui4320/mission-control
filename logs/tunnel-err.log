@@ -63,3 +63,54 @@
 2026-05-27T14:52:43Z INF precheck component="Cloudflare API" details="API is reachable" run_id=7f5fe308-0306-416f-91ab-c632d14c4097 status=pass target=api.cloudflare.com:443
 2026-05-27T14:52:43Z INF precheck complete hard_fail=false run_id=7f5fe308-0306-416f-91ab-c632d14c4097 suggested_protocol=quic
 2026-05-27T14:52:43Z INF Registered tunnel connection connIndex=0 connection=d5b7975e-8d21-4b60-826f-117fdc027ac6 event=0 ip=2606:4700:a0::9 location=ord06 protocol=quic
+2026-05-27T14:55:02Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:02Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:55:12Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:12Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:55:17Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:17Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:55:22Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:22Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:55:27Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:27Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:55:37Z ERR  error="Unable to reach the origin service. The service may be down or it may not be responding to traffic from cloudflared: dial tcp [::1]:5555: connect: connection refused" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:37Z ERR Request failed error="Unable to reach the origin service. The service may be down or it may not be responding to traffic from cloudflared: dial tcp [::1]:5555: connect: connection refused" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:55:42Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-27T14:55:42Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://bosnia-contacted-buzz-bryant.trycloudflare.com/api/projects event=0 ip=2606:4700:a0::9 type=http
+2026-05-27T14:56:50Z INF Initiating graceful shutdown due to signal terminated ...
+2026-05-27T14:56:50Z ERR failed to run the datagram handler error="context canceled" connIndex=0 event=0 ip=2606:4700:a0::9
+2026-05-27T14:56:50Z ERR failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a0::9
+2026-05-27T14:56:50Z ERR Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a0::9
+2026-05-27T14:56:50Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=2606:4700:a0::9
+2026-05-27T14:56:50Z ERR Connection terminated connIndex=0
+2026-05-27T14:56:50Z ERR no more connections active and exiting
+2026-05-27T14:56:50Z INF Tunnel server stopped
+2026-05-27T14:56:50Z INF Metrics server stopped
+2026-05-27T14:56:52Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
+2026-05-27T14:56:52Z INF Requesting new quick Tunnel on trycloudflare.com...
+2026-05-27T14:56:55Z INF +--------------------------------------------------------------------------------------------+
+2026-05-27T14:56:55Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+2026-05-27T14:56:55Z INF |  https://rubber-mart-schedule-vic.trycloudflare.com                                        |
+2026-05-27T14:56:55Z INF +--------------------------------------------------------------------------------------------+
+2026-05-27T14:56:55Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp /etc/cloudflared /usr/local/etc/cloudflared]
+2026-05-27T14:56:55Z INF Version 2026.5.1 (Checksum c232c2be1fda76ffb5dff55874c4d4e3d3137bd426e3e73d539c3ecbe20526a2)
+2026-05-27T14:56:55Z INF GOOS: darwin, GOVersion: go1.26.2, GoArch: amd64
+2026-05-27T14:56:55Z INF Settings: map[ha-connections:1 no-autoupdate:true protocol:quic url:http://localhost:5555]
+2026-05-27T14:56:55Z INF Generated Connector ID: 93bf9e78-96a2-4d13-a015-6616cd19d066
+2026-05-27T14:56:55Z INF Initial protocol quic
+2026-05-27T14:56:55Z INF ICMP proxy will use 192.168.7.27 as source for IPv4
+2026-05-27T14:56:55Z INF ICMP proxy will use fe80::1c39:23d3:2889:e939 in zone en0 as source for IPv6
+2026-05-27T14:56:55Z INF Created ICMP proxy listening on 192.168.7.27:0
+2026-05-27T14:56:55Z INF ICMP proxy will use 192.168.7.27 as source for IPv4
+2026-05-27T14:56:55Z INF ICMP proxy will use fe80::1c39:23d3:2889:e939 in zone en0 as source for IPv6
+2026-05-27T14:56:55Z INF Starting metrics server on 127.0.0.1:20242/metrics
+2026-05-27T14:56:55Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=2606:4700:a8::1
+2026-05-27T14:56:56Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=region1.v2.argotunnel.com
+2026-05-27T14:56:56Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=region2.v2.argotunnel.com
+2026-05-27T14:56:56Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=region1.v2.argotunnel.com
+2026-05-27T14:56:56Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=region2.v2.argotunnel.com
+2026-05-27T14:56:56Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=region1.v2.argotunnel.com
+2026-05-27T14:56:56Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=region2.v2.argotunnel.com
+2026-05-27T14:56:56Z INF precheck component="Cloudflare API" details="API is reachable" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=api.cloudflare.com:443
+2026-05-27T14:56:56Z INF precheck complete hard_fail=false run_id=04bb3028-70d9-403e-8bf4-540fe42848ae suggested_protocol=quic
+2026-05-27T14:56:56Z INF Registered tunnel connection connIndex=0 connection=e24304cb-ade7-4f1a-92fd-5a058ee57fe4 event=0 ip=2606:4700:a8::1 location=ord07 protocol=quic
