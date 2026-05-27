@@ -144,15 +144,19 @@ apiUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') connectAPI
 
 // ── Tunnel URL discovery ──────────────────────────────────────
 
-const TUNNEL_DISCOVERY_URL = 'https://raw.githubusercontent.com/fsiddiqui4320/mission-control/main/tunnel-url.txt';
+const TUNNEL_DISCOVERY_URL = 'https://api.github.com/repos/fsiddiqui4320/mission-control/contents/tunnel-url.txt';
 
 async function discoverTunnelURL() {
   try {
     const res = await fetch(TUNNEL_DISCOVERY_URL, { cache: 'no-cache' });
     if (res.ok) {
-      const url = (await res.text()).trim();
-      if (url.startsWith('https://') && url.includes('trycloudflare.com')) {
-        return url;
+      const data = await res.json();
+      // GitHub API returns content as base64
+      if (data.content) {
+        const url = atob(data.content.replace(/\s/g, '')).trim();
+        if (url.startsWith('https://') && url.includes('trycloudflare.com')) {
+          return url;
+        }
       }
     }
   } catch (e) {
