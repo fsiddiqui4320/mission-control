@@ -21,8 +21,8 @@ async function loadProjects() {
 
   grid.innerHTML = data.map(p => {
     const name = p.name.replace(/-/g, ' ').replace(/_/g, ' ');
-    const modified = new Date(p.modified);
-    const age = relativeTime(modified);
+    const modified = p.modified ? new Date(p.modified) : null;
+    const age = modified ? relativeTime(modified) : '';
     const fileCount = p.file_count || 0;
     const taskCount = p.task_count || 0;
 
