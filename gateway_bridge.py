@@ -60,7 +60,7 @@ class GatewayState:
             }
 
 
-def _read_json(path, default=None):
+def _read_json(path, default=None, strip_large_fields=False):
     """Safely read a JSON file."""
     try:
         if not path.exists():
@@ -282,6 +282,8 @@ class GatewayPoller:
         self._running = False
 
     def _run_loop(self):
+        # Delay first fetch so HTTP server is ready
+        time.sleep(5)
         fetch_all(self.state)
         while self._running:
             time.sleep(self.interval)
