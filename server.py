@@ -1,280 +1,263 @@
 #!/usr/bin/env python3
-"""Mission Control - lightweight API server for the OpenClaw dashboard."""
+"""
+Mission Control v2 — lightweight API server + Gateway WebSocket bridge.
+Serves REST API consumed by the frontend (static HTML on Vercel).
+Gateway WS connection runs in a background thread; handlers read shared state.
+"""
 import json
 import os
-import re
+import time
+import signal
+import logging
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse
-import datetime
+from urllib.parse import urlparse, parse_qs
+from datetime import datetime, timezone
 
-WORKSPACE    = Path(os.path.expanduser("~/.openclaw/workspace"))
-PROJECTS_DIR = WORKSPACE / "projects"
-MEMORY_DIR   = WORKSPACE / "memory"
+import gateway_bridge
+from api import (
+    handle_pulse, handle_projects, handle_cron,
+    handle_health, handle_memories, handle_bottlenecks,
+    handle_actions, handle_actions_trigger,
+)
 
-# Skip hidden dirs and common noise
-SKIP_DIRS = {'.git', '.vercel', 'node_modules', '__pycache__', '.DS_Store', '.next', 'dist', 'build'}
-SKIP_FILE_EXTENSIONS = {'.pyc', '.pyo', '.map', '.lock', '.bin'}
+# ── Logging ────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("server")
+
+# ── Config ─────────────────────────────────────────────────────
+
+WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
+SERVER_DIR = Path(__file__).resolve().parent
+START_TIME = time.time()
 
 
-def safe_walk(directory: Path):
-    """Walk directory tree, skipping noise dirs at traversal level."""
-    try:
-        for entry in sorted(directory.iterdir()):
-            if entry.name.startswith('.') or entry.name in SKIP_DIRS:
-                continue
-            if entry.is_dir():
-                yield from safe_walk(entry)
-            elif entry.is_file() and entry.suffix not in SKIP_FILE_EXTENSIONS:
-                yield entry
-    except PermissionError:
-        pass
+# ── JSON helper ────────────────────────────────────────────────
+
+def make_response(data, source="filesystem"):
+    """Wrap data in standard response envelope."""
+    return {
+        "ok": True,
+        "data": data,
+        "meta": {
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "uptime_seconds": round(time.time() - START_TIME),
+        },
+    }
 
 
-def safe_md_walk(directory: Path):
-    """Walk directory tree for .md files only, skipping noise dirs."""
-    try:
-        for entry in sorted(directory.iterdir()):
-            if entry.name.startswith('.') or entry.name in SKIP_DIRS:
-                continue
-            if entry.is_dir():
-                yield from safe_md_walk(entry)
-            elif entry.is_file() and entry.suffix == '.md':
-                yield entry
-    except PermissionError:
-        pass
+def make_error(message, source="error"):
+    """Return a standardized error response."""
+    return {
+        "ok": False,
+        "error": message,
+        "meta": {
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "uptime_seconds": round(time.time() - START_TIME),
+        },
+    }
 
+
+# ── API Handler ────────────────────────────────────────────────
 
 class APIHandler(SimpleHTTPRequestHandler):
+    """HTTP handler for Mission Control API and static files."""
+
+    def __init__(self, *args, **kwargs):
+        # Set serving directory to project root for static files
+        self.directory = str(SERVER_DIR)
+        super().__init__(*args, **kwargs)
+
     def do_GET(self):
         parsed = urlparse(self.path)
-        route  = parsed.path
+        route = parsed.path
+        qs = parse_qs(parsed.query)
 
-        routes = {
-            "/api/status":   self._status,
-            "/api/projects": self._projects,
-            "/api/memories": self._memories,
-            "/api/docs":     self._docs,
-            "/api/tasks":    self._tasks,
-            "/api/cron":     self._cron,
-            "/api/activity": self._activity,
-            "/api/team":     self._team,
-        }
-
-        handler = routes.get(route)
-        if handler:
-            self._json(handler())
+        # ── API routes ──
+        if route == "/api/status":
+            self._json_ok(self._status())
             return
 
+        if route == "/api/pulse":
+            self._json_ok(self._try(handle_pulse, "pulse"))
+            return
+
+        if route == "/api/projects":
+            self._json_ok(self._try(handle_projects, "projects"))
+            return
+
+        if route == "/api/cron":
+            self._json_ok(self._try(handle_cron, "cron"))
+            return
+
+        if route == "/api/health":
+            self._json_ok(self._try(handle_health, "health"))
+            return
+
+        if route == "/api/memories":
+            query = qs.get("q", [None])[0]
+            self._json_ok(self._try(lambda: handle_memories(query), "memories"))
+            return
+
+        if route == "/api/bottlenecks":
+            self._json_ok(self._try(handle_bottlenecks, "bottlenecks"))
+            return
+
+        if route == "/api/actions":
+            self._json_ok(self._try(handle_actions, "actions"))
+            return
+
+        # Serve static files
         if self.path in ("/", ""):
             self.path = "/index.html"
         return SimpleHTTPRequestHandler.do_GET(self)
 
-    def log_message(self, fmt, *args):
-        # Suppress static file noise; only log API calls
-        if '/api/' in args[0] if args else False:
-            super().log_message(fmt, *args)
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        route = parsed.path
 
-    def _json(self, data):
-        body = json.dumps(data, default=str).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
+        if route == "/api/actions/trigger":
+            body = self._read_body()
+            action_id = body.get("action", "") if body else ""
+            if not action_id:
+                self._json_ok(make_error("Missing 'action' in request body"))
+                return
+            result = self._try(lambda: handle_actions_trigger(action_id, body), "actions")
+            self._json_ok(result if isinstance(result, dict) else make_response(result, "actions"))
+            return
+
+        # Fallback
+        self.send_error(404, "Not Found")
+
+    def do_OPTIONS(self):
+        """Handle CORS preflight."""
+        self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
-        self.wfile.write(body)
 
-    # ── Route handlers ────────────────────────────────────────
-
-    def _status(self):
-        return {
-            "status":    "ok",
-            "workspace": str(WORKSPACE),
-            "exists":    WORKSPACE.exists(),
-        }
-
-    def _projects(self):
-        projects = []
-        if not PROJECTS_DIR.exists():
-            return projects
-        for d in sorted(PROJECTS_DIR.iterdir()):
-            if not d.is_dir() or d.name.startswith('.'):
-                continue
-            spec   = d / "SPEC.md"
-            files  = list(safe_walk(d))
-            tasks  = self._count_tasks_in_dir(d)
-            mtime  = d.stat().st_mtime
-            projects.append({
-                "name":       d.name,
-                "path":       str(d),
-                "has_spec":   spec.exists(),
-                "file_count": len(files),
-                "task_count": tasks,
-                "modified":   datetime.datetime.fromtimestamp(mtime).isoformat(),
-            })
-        return projects
-
-    def _memories(self):
-        memories = {"daily": [], "areas": [], "resources": [], "other": []}
-        if not MEMORY_DIR.exists():
-            return memories
-        for f in safe_md_walk(MEMORY_DIR):
-            rel   = str(f.relative_to(MEMORY_DIR))
-            entry = {
-                "name":     f.stem,
-                "path":     str(f),
-                "relative": rel,
-                "size":     f.stat().st_size,
-                "modified": datetime.datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-            }
-            if rel.startswith("areas/"):
-                memories["areas"].append(entry)
-            elif rel.startswith("resources/"):
-                memories["resources"].append(entry)
-            elif re.match(r"^\d{4}", rel):  # YYYY-… files
-                memories["daily"].append(entry)
-            else:
-                memories["other"].append(entry)
-        return memories
-
-    def _docs(self):
-        docs = []
-        if not WORKSPACE.exists():
-            return docs
-        for f in safe_md_walk(WORKSPACE):
-            rel = str(f.relative_to(WORKSPACE))
-            # Exclude memory and project internal files
-            if rel.startswith("memory/") or "/memory/" in rel:
-                continue
-            docs.append({
-                "name":     f.stem,
-                "path":     rel,
-                "size":     f.stat().st_size,
-                "modified": datetime.datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-            })
-        return docs
-
-    def _tasks(self):
-        tasks = []
-        if not WORKSPACE.exists():
-            return tasks
-        for f in safe_md_walk(WORKSPACE):
-            try:
-                content = f.read_text(encoding="utf-8", errors="ignore")
-                for line in content.split("\n"):
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    status = self._task_status(stripped)
-                    if status:
-                        tasks.append({
-                            "title":  stripped,
-                            "source": str(f.relative_to(WORKSPACE)),
-                            "status": status,
-                        })
-            except Exception:
-                pass
-        # Sort: in_progress first, then todo, then done
-        order = {"in_progress": 0, "todo": 1, "done": 2}
-        tasks.sort(key=lambda t: order.get(t["status"], 99))
-        return tasks[:80]
-
-    def _cron(self):
-        """Try to load cron configuration from known openclaw paths."""
-        candidates = [
-            Path.home() / ".openclaw" / "crons.json",
-            Path.home() / ".openclaw" / "config" / "crons.json",
-            WORKSPACE / "crons.json",
-            WORKSPACE / "config" / "crons.json",
-        ]
-        for path in candidates:
-            if path.exists():
-                try:
-                    return json.loads(path.read_text())
-                except Exception:
-                    pass
-        return {"jobs": [], "note": "No cron config found"}
-
-    def _activity(self):
-        """Return recently modified files, newest first."""
-        if not WORKSPACE.exists():
-            return []
-        cutoff  = datetime.datetime.now() - datetime.timedelta(days=14)
-        results = []
-        for f in safe_walk(WORKSPACE):
-            try:
-                mtime = datetime.datetime.fromtimestamp(f.stat().st_mtime)
-                if mtime < cutoff:
-                    continue
-                results.append({
-                    "path":     str(f.relative_to(WORKSPACE)),
-                    "name":     f.name,
-                    "modified": mtime.isoformat(),
-                    "type":     f.suffix.lstrip(".") or "file",
-                })
-            except Exception:
-                pass
-        results.sort(key=lambda x: x["modified"], reverse=True)
-        return results[:40]
-
-    def _team(self):
-        """Return agent roster from config if available."""
-        candidates = [
-            Path.home() / ".openclaw" / "agents.json",
-            Path.home() / ".openclaw" / "config" / "agents.json",
-            WORKSPACE / "agents.json",
-        ]
-        for path in candidates:
-            if path.exists():
-                try:
-                    data = json.loads(path.read_text())
-                    if isinstance(data, list):
-                        return data
-                    if isinstance(data, dict) and "agents" in data:
-                        return data["agents"]
-                except Exception:
-                    pass
-        return []  # JS falls back to defaults
+    def log_message(self, fmt, *args):
+        # Only log API calls, suppress static file noise
+        try:
+            msg = args[0] if args else ""
+            if isinstance(msg, str) and '/api/' in msg:
+                logger.info(f"API {msg}")
+        except Exception:
+            pass
 
     # ── Helpers ───────────────────────────────────────────────
 
-    @staticmethod
-    def _skip(path: Path) -> bool:
-        return any(part in SKIP_DIRS or part.startswith('.') for part in path.parts)
+    def _json_ok(self, data):
+        """Send a JSON 200 response with CORS headers."""
+        body = json.dumps(data, default=str).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
-    @staticmethod
-    def _task_status(line: str):
-        lower = line.lower()
-        # Completed: - [x] or - [X]
-        if re.search(r'-\s*\[[xX]\]', line):
-            return "done"
-        # In progress: - [>] or - [/] or - [~]
-        if re.search(r'-\s*\[[>/~]\]', line):
-            return "in_progress"
-        # Open: - [ ]
-        if re.search(r'-\s*\[\s\]', line):
-            return "todo"
-        # TODO / FIXME markers (not inside done items)
-        if re.search(r'\bTODO\b|\bFIXME\b', line):
-            return "todo"
-        return None
+    def _json_error(self, status, message):
+        """Send a JSON error response."""
+        body = json.dumps({"ok": False, "error": message}).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
-    def _count_tasks_in_dir(self, d: Path) -> int:
-        count = 0
-        for f in safe_md_walk(d):
-            try:
-                for line in f.read_text(encoding="utf-8", errors="ignore").split("\n"):
-                    if self._task_status(line.strip()):
-                        count += 1
-            except Exception:
-                pass
-        return count
+    def _cors_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+
+    def _read_body(self):
+        """Read and parse JSON body."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 1024 * 1024:  # 1MB limit
+                return None
+            raw = self.rfile.read(length)
+            return json.loads(raw.decode()) if raw else {}
+        except Exception:
+            return None
+
+    def _try(self, func, source="unknown"):
+        """Wrap a handler with try/except, returning error envelope on failure."""
+        try:
+            result = func()
+            return make_response(result, source)
+        except Exception as e:
+            logger.error(f"Handler {source} failed: {e}", exc_info=True)
+            return make_error(f"{source}: {e}")
+
+    def _status(self):
+        """Return server + gateway status."""
+        state = gateway_bridge.get_state()
+        snapshot = state.snapshot()
+        return {
+            "status": "ok",
+            "server": {
+                "uptime_seconds": round(time.time() - START_TIME),
+                "workspace": str(WORKSPACE),
+                "version": "2.0.0",
+            },
+            "gateway": {
+                "connected": snapshot.get("connected", False),
+                "last_update": snapshot.get("last_update"),
+                "error": snapshot.get("error"),
+            },
+        }
+
+
+# ── Main ───────────────────────────────────────────────────────
+
+def main():
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5555
+
+    # Start gateway bridge
+    logger.info("Starting Gateway WebSocket bridge...")
+    try:
+        gateway_bridge.start_bridge()
+        logger.info("Gateway bridge started")
+    except Exception as e:
+        logger.error(f"Failed to start gateway bridge: {e}")
+        # Continue anyway — server works with filesystem-only data
+
+    # Change to project directory for static file serving
+    os.chdir(str(SERVER_DIR))
+
+    server = HTTPServer(("127.0.0.1", port), APIHandler)
+
+    # Graceful shutdown
+    def shutdown(sig, frame):
+        logger.info("Shutting down...")
+        gateway_bridge.stop_bridge()
+        server.shutdown()
+
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    logger.info(f"🚀 Mission Control v2 on http://127.0.0.1:{port}")
+    logger.info(f"   Workspace: {WORKSPACE}")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        gateway_bridge.stop_bridge()
+        logger.info("Mission Control stopped")
 
 
 if __name__ == "__main__":
-    import sys
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5555
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    print(f"🚀 Mission Control on http://localhost:{port}")
-    print(f"   Workspace: {WORKSPACE}")
-    HTTPServer(("127.0.0.1", port), APIHandler).serve_forever()
+    main()

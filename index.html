@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Mission Control — Octo</title>
+<title>Mission Control v2 — Octo</title>
 <link rel="stylesheet" href="static/css/dashboard.css">
 </head>
 <body>
 <div id="app">
 
-  <!-- Mobile top bar (hidden on tablet+) -->
+  <!-- Mobile top bar -->
   <header id="mobile-header">
     <button id="hamburger" aria-label="Toggle menu">
       <span></span><span></span><span></span>
@@ -18,36 +18,32 @@
     <span id="mobile-status" class="disconnected"></span>
   </header>
 
-  <!-- Overlay (mobile sidebar backdrop) -->
   <div id="sidebar-overlay"></div>
 
-  <!-- Sidebar nav -->
+  <!-- Sidebar -->
   <nav id="sidebar">
     <div class="sidebar-header">
       <h1>🐙 Mission Control</h1>
       <span id="status-dot" class="status-dot disconnected"></span>
     </div>
     <ul class="nav-tabs">
-      <li class="nav-item active" data-tab="tasks" data-tooltip="Task Board">
-        <span class="nav-icon">📋</span><span class="nav-label">Task Board</span>
+      <li class="nav-item active" data-tab="pulse">
+        <span class="nav-icon">📡</span><span class="nav-label">Pulse</span>
       </li>
-      <li class="nav-item" data-tab="calendar" data-tooltip="Calendar">
-        <span class="nav-icon">📅</span><span class="nav-label">Calendar</span>
-      </li>
-      <li class="nav-item" data-tab="projects" data-tooltip="Projects">
+      <li class="nav-item" data-tab="projects">
         <span class="nav-icon">📁</span><span class="nav-label">Projects</span>
       </li>
-      <li class="nav-item" data-tab="memories" data-tooltip="Memories">
-        <span class="nav-icon">🧠</span><span class="nav-label">Memories</span>
+      <li class="nav-item" data-tab="cron">
+        <span class="nav-icon">⏰</span><span class="nav-label">Cron</span>
       </li>
-      <li class="nav-item" data-tab="docs" data-tooltip="Docs">
-        <span class="nav-icon">📄</span><span class="nav-label">Docs</span>
+      <li class="nav-item" data-tab="health">
+        <span class="nav-icon">💚</span><span class="nav-label">Health</span>
       </li>
-      <li class="nav-item" data-tab="team" data-tooltip="Team">
-        <span class="nav-icon">👥</span><span class="nav-label">Team</span>
+      <li class="nav-item" data-tab="memory">
+        <span class="nav-icon">🧠</span><span class="nav-label">Memory</span>
       </li>
-      <li class="nav-item" data-tab="office" data-tooltip="Office">
-        <span class="nav-icon">🏢</span><span class="nav-label">Office</span>
+      <li class="nav-item" data-tab="bottlenecks">
+        <span class="nav-icon">⚠️</span><span class="nav-label">Issues</span>
       </li>
     </ul>
     <div class="sidebar-footer">
@@ -58,98 +54,118 @@
   <!-- Main content -->
   <main id="content">
 
-    <!-- API connection bar -->
+    <!-- Connection bar -->
     <div id="api-bar">
       <div id="api-status">
         <span class="api-indicator disconnected"></span>
-        <span id="api-label">No API connected</span>
+        <span id="api-label">Connecting…</span>
       </div>
       <div id="api-config">
-        <input type="text" id="api-url" placeholder="http://localhost:5555" value="http://localhost:5555">
+        <input type="text" id="api-url" placeholder="Auto-discovering…">
         <button id="api-connect-btn">Connect</button>
       </div>
     </div>
 
-    <!-- Task Board -->
-    <div id="tab-tasks" class="tab-content active">
-      <h2>Task Board</h2>
-      <div id="kanban" class="kanban">
-        <div class="kanban-col" id="col-todo">
-          <div class="kanban-col-header">
-            <h3>To Do</h3>
-            <span class="col-count" id="count-todo">0</span>
-          </div>
-          <div class="kanban-items" id="items-todo"></div>
-        </div>
-        <div class="kanban-col" id="col-progress">
-          <div class="kanban-col-header">
-            <h3>In Progress</h3>
-            <span class="col-count" id="count-progress">0</span>
-          </div>
-          <div class="kanban-items" id="items-progress"></div>
-        </div>
-        <div class="kanban-col" id="col-done">
-          <div class="kanban-col-header">
-            <h3>Done</h3>
-            <span class="col-count" id="count-done">0</span>
-          </div>
-          <div class="kanban-items" id="items-done"></div>
-        </div>
+    <!-- ── Pulse Tab ── -->
+    <div id="tab-pulse" class="tab-content active">
+      <div class="tab-header">
+        <h2>📡 Pulse</h2>
+        <span class="tab-refresh" id="pulse-age"></span>
+      </div>
+      <div class="quick-stats" id="quick-stats"></div>
+      <div class="section">
+        <h3>Active Sessions</h3>
+        <div id="pulse-sessions" class="sessions-list"></div>
+      </div>
+      <div class="section">
+        <h3>Recent Activity</h3>
+        <div id="pulse-activity" class="activity-feed"></div>
       </div>
     </div>
 
-    <!-- Calendar -->
-    <div id="tab-calendar" class="tab-content">
-      <h2>Calendar</h2>
-      <div id="calendar-grid"></div>
-    </div>
-
-    <!-- Projects -->
+    <!-- ── Projects Tab ── -->
     <div id="tab-projects" class="tab-content">
-      <h2>Projects</h2>
-      <div id="projects-grid" class="card-grid"><div class="loading">Connect API to load projects</div></div>
-    </div>
-
-    <!-- Memories -->
-    <div id="tab-memories" class="tab-content">
-      <h2>Memories</h2>
-      <div class="search-bar">
-        <input type="search" id="memory-search" class="search-input" placeholder="Search memories…">
+      <div class="tab-header">
+        <h2>📁 Projects</h2>
+        <span class="tab-refresh" id="projects-age"></span>
       </div>
-      <div id="memories-list"><div class="loading">Connect API to load memories</div></div>
-    </div>
-
-    <!-- Docs -->
-    <div id="tab-docs" class="tab-content">
-      <h2>Documents</h2>
-      <div class="search-bar">
-        <input type="search" id="docs-search" class="search-input" placeholder="Search documents…">
+      <div class="sort-bar">
+        <button class="sort-btn active" data-sort="recent">Recent</button>
+        <button class="sort-btn" data-sort="name">A–Z</button>
+        <button class="sort-btn" data-sort="tasks">Most Tasks</button>
       </div>
-      <div id="docs-list"><div class="loading">Connect API to load documents</div></div>
+      <div id="projects-grid" class="card-grid"></div>
     </div>
 
-    <!-- Team -->
-    <div id="tab-team" class="tab-content">
-      <h2>Team</h2>
-      <div id="team-list"></div>
+    <!-- ── Cron Tab ── -->
+    <div id="tab-cron" class="tab-content">
+      <div class="tab-header">
+        <h2>⏰ Cron Jobs</h2>
+        <span class="tab-refresh" id="cron-age"></span>
+      </div>
+      <div id="cron-summary" class="cron-summary"></div>
+      <div id="cron-list" class="cron-list"></div>
     </div>
 
-    <!-- Office -->
-    <div id="tab-office" class="tab-content">
-      <h2>Office</h2>
-      <div id="office-feed"></div>
+    <!-- ── Health Tab ── -->
+    <div id="tab-health" class="tab-content">
+      <div class="tab-header">
+        <h2>💚 Health</h2>
+        <span class="tab-refresh" id="health-age"></span>
+      </div>
+      <div class="health-grid">
+        <div class="health-card" id="health-gateway">
+          <h3>🔌 Gateway</h3>
+          <div class="health-body"></div>
+        </div>
+        <div class="health-card" id="health-channels">
+          <h3>📡 Channels</h3>
+          <div class="health-body"></div>
+        </div>
+        <div class="health-card" id="health-tunnel">
+          <h3>🌐 Tunnel</h3>
+          <div class="health-body"></div>
+        </div>
+        <div class="health-card" id="health-workspace">
+          <h3>💾 Workspace</h3>
+          <div class="health-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Memory Tab ── -->
+    <div id="tab-memory" class="tab-content">
+      <div class="tab-header">
+        <h2>🧠 Memory</h2>
+      </div>
+      <div class="search-bar">
+        <input type="search" id="memory-search" placeholder="Search all memory files…">
+      </div>
+      <div class="memory-sections">
+        <div class="section">
+          <h3>📅 Daily Notes</h3>
+          <div id="memory-daily"></div>
+        </div>
+        <div class="section">
+          <h3>📂 Areas</h3>
+          <div id="memory-areas"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Bottlenecks Tab ── -->
+    <div id="tab-bottlenecks" class="tab-content">
+      <div class="tab-header">
+        <h2>⚠️ Issues & Deadlines</h2>
+        <span class="tab-refresh" id="bottlenecks-age"></span>
+      </div>
+      <div id="bottlenecks-summary" class="issues-summary"></div>
+      <div id="bottlenecks-list"></div>
     </div>
 
   </main>
 </div>
 
 <script src="static/js/app.js"></script>
-<script src="static/js/tasks.js"></script>
-<script src="static/js/calendar.js"></script>
-<script src="static/js/projects.js"></script>
-<script src="static/js/memories.js"></script>
-<script src="static/js/docs.js"></script>
-<script src="static/js/team.js"></script>
-<script src="static/js/office.js"></script>
 </body>
 </html>

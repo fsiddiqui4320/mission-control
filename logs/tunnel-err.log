@@ -114,3 +114,17 @@
 2026-05-27T14:56:56Z INF precheck component="Cloudflare API" details="API is reachable" run_id=04bb3028-70d9-403e-8bf4-540fe42848ae status=pass target=api.cloudflare.com:443
 2026-05-27T14:56:56Z INF precheck complete hard_fail=false run_id=04bb3028-70d9-403e-8bf4-540fe42848ae suggested_protocol=quic
 2026-05-27T14:56:56Z INF Registered tunnel connection connIndex=0 connection=e24304cb-ade7-4f1a-92fd-5a058ee57fe4 event=0 ip=2606:4700:a8::1 location=ord07 protocol=quic
+2026-05-27T17:47:02Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-05-27T19:12:08Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-05-28T02:15:02Z ERR  error="Unable to reach the origin service. The service may be down or it may not be responding to traffic from cloudflared: EOF" connIndex=0 event=1 ingressRule=0 originService=http://localhost:5555
+2026-05-28T02:15:02Z ERR Request failed error="Unable to reach the origin service. The service may be down or it may not be responding to traffic from cloudflared: EOF" connIndex=0 dest=https://rubber-mart-schedule-vic.trycloudflare.com/favicon.ico event=0 ip=2606:4700:a8::1 type=http
+2026-05-28T02:17:16Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-05-28T03:38:32Z INF Initiating graceful shutdown due to signal terminated ...
+2026-05-28T03:38:32Z ERR failed to run the datagram handler error="context canceled" connIndex=0 event=0 ip=2606:4700:a8::1
+2026-05-28T03:38:32Z ERR failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a8::1
+2026-05-28T03:38:32Z ERR Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a8::1
+2026-05-28T03:38:32Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=2606:4700:a8::1
+2026-05-28T03:38:32Z ERR Connection terminated connIndex=0
+2026-05-28T03:38:32Z ERR no more connections active and exiting
+2026-05-28T03:38:32Z INF Tunnel server stopped
+2026-05-28T03:38:32Z INF Metrics server stopped
