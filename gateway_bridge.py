@@ -1,22 +1,25 @@
 """
-Gateway Bridge — polls OpenClaw's CLI for live operational data.
-Uses `openclaw sessions`, `openclaw cron list`, `openclaw status --json`.
-Runs in a background thread, updates shared state cache.
-More robust than direct WS — no auth negotiation, same data, always available.
+Gateway Bridge — reads operational state from filesystem + HTTP health check.
+No CLI dependency — pure file reads, can never hang.
+Polls periodically in a background thread, updates shared state cache.
 """
 import json
-import re
 import time
 import threading
 import logging
-import subprocess
+import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone
 
 logger = logging.getLogger("gateway_bridge")
 
+HOME = Path.home()
+SESSIONS_FILE = HOME / ".openclaw" / "agents" / "main" / "sessions" / "sessions.json"
+CRON_JOBS_FILE = HOME / ".openclaw" / "cron" / "jobs.json"
+CRON_STATE_FILE = HOME / ".openclaw" / "cron" / "jobs-state.json"
+CONFIG_FILE = HOME / ".openclaw" / "openclaw.json"
+GATEWAY_HEALTH_URL = "http://127.0.0.1:18789/health"
 
-# ── State cache (thread-safe) ──────────────────────────────────
 
 class GatewayState:
     """Thread-safe cache of Gateway state."""
@@ -42,7 +45,6 @@ class GatewayState:
             self.last_update = datetime.now(timezone.utc).isoformat()
 
     def snapshot(self):
-        """Return a thread-safe copy of the state."""
         with self._lock:
             return {
                 "sessions": list(self.sessions),
@@ -58,298 +60,209 @@ class GatewayState:
             }
 
 
-# ── Data fetchers ─────────────────────────────────────────────
-
-def _run_cli(args, timeout=10):
-    """Run an openclaw CLI command and return parsed output."""
+def _read_json(path, default=None):
+    """Safely read a JSON file."""
     try:
-        result = subprocess.run(
-            ["openclaw"] + args,
-            capture_output=True, text=True, timeout=timeout,
-            env={**__import__('os').environ, "OPENCLAW_NO_COLOR": "1"}
-        )
-        if result.returncode != 0:
-            logger.warning(f"openclaw {' '.join(args)} failed: {result.stderr.strip()[:100]}")
-            return None
-        return result.stdout.strip()
-    except FileNotFoundError:
-        logger.error("openclaw CLI not found")
-        return None
-    except subprocess.TimeoutExpired:
-        logger.warning(f"openclaw {' '.join(args)} timed out")
-        return None
+        if not path.exists():
+            return default
+        with open(path) as f:
+            return json.load(f)
     except Exception as e:
-        logger.error(f"openclaw {' '.join(args)} error: {e}")
-        return None
+        logger.debug(f"Failed to read {path}: {e}")
+        return default
 
 
-def _parse_sessions(raw):
-    """Parse `openclaw sessions` output (fixed-width table) into structured data."""
+def _check_health():
+    """Check gateway health via HTTP."""
+    try:
+        req = urllib.request.Request(GATEWAY_HEALTH_URL)
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _parse_sessions_file(data):
+    """Parse sessions.json dict into frontend-friendly format."""
     sessions = []
-    if not raw:
+    if not isinstance(data, dict):
         return sessions
 
-    lines = raw.split("\n")
-    in_table = False
-    col_starts = None
-    
-    for line in lines:
-        if not line.strip():
-            continue
-        if line.startswith("Sessions listed:") or line.startswith("Session store:"):
-            continue
-        
-        # Header row — determine column positions from the separator gaps
-        if line.startswith("Kind"):
-            in_table = True
-            # Find column starts by scanning for transitions: space→non-space after multiple spaces
-            col_starts = []
-            prev_char = ' '
-            gap_count = 0
-            for i, ch in enumerate(line):
-                if ch == ' ':
-                    gap_count += 1
-                else:
-                    if gap_count >= 2 and prev_char == ' ':
-                        col_starts.append(i)
-                    gap_count = 0
-                prev_char = ch
-            if not col_starts or col_starts[0] != 0:
-                col_starts.insert(0, 0)
-            continue
-        
-        if not in_table or not col_starts:
+    now_ms = int(time.time() * 1000)
+
+    for session_key, s in data.items():
+        if not isinstance(s, dict):
             continue
 
-        # Extract columns by position
-        parts = []
-        for i, start in enumerate(col_starts):
-            end = col_starts[i + 1] if i + 1 < len(col_starts) else len(line)
-            parts.append(line[start:end].strip())
-        
-        if len(parts) < 6:
-            continue
+        updated = s.get("updatedAt", 0)
+        age_ms = now_ms - updated if updated else 999999999
+        age_seconds = max(0, age_ms // 1000)
 
-        kind = parts[0]
-        key = parts[1]
-        age = parts[2]
-        model = parts[3] if len(parts) > 3 else ""
-        runtime = parts[4] if len(parts) > 4 else ""
-        tokens = parts[5] if len(parts) > 5 else ""
-        flags = parts[6] if len(parts) > 6 else ""
+        if age_seconds < 60:
+            age = "just now"
+        elif age_seconds < 3600:
+            age = f"{age_seconds // 60}m ago"
+        elif age_seconds < 86400:
+            age = f"{age_seconds // 3600}h ago"
+        else:
+            age = f"{age_seconds // 86400}d ago"
 
-        # Extract channel/surface from key
-        surface = "unknown"
-        channel = ""
-        if "disco" in key:  # handles truncated "discord"
-            surface = "discord"
-            m = re.search(r'disco[^.]*\.\.\.(\d+)', key)
-            if m:
-                channel = m.group(1)
-        elif "teleg" in key:  # handles truncated "telegram"
-            surface = "telegram"
-        elif "cron" in key:
+        # Determine kind and surface from the key pattern
+        key_lower = session_key.lower()
+        if "cron" in key_lower:
+            kind = "cron"
             surface = "cron"
-        elif "subag" in key:  # handles truncated "subagent"
+        elif "subagent" in key_lower or "subag" in key_lower:
+            kind = "spawn-child"
             surface = "subagent"
-        elif "heartbeat" in key:
+        elif "discord" in key_lower:
+            kind = "group"
+            surface = "discord"
+        elif "telegram" in key_lower or "teleg" in key_lower:
+            kind = "group" if "group" in key_lower else "direct"
+            surface = "telegram"
+        elif "heartbeat" in key_lower:
+            kind = "heartbeat"
             surface = "heartbeat"
-        elif kind == "direct" and "main" in key:
+        elif ":main" in session_key.lower():
+            kind = "direct"
             surface = "direct"
-        elif kind == "group":
-            surface = "group"
-
-        # Parse tokens: "23k/200k (12%)" or "unknown/200k (?%)"
-        token_used = 0
-        token_limit = 0
-        token_pct = 0
-        m = re.search(r'(\d+)k/(\d+)k\s*\((\d+)%\)', tokens)
-        if m:
-            token_used = int(m.group(1)) * 1000
-            token_limit = int(m.group(2)) * 1000
-            token_pct = int(m.group(3))
         else:
-            # Try "unknown/200k"
-            m = re.search(r'unknown/(\d+)k', tokens)
-            if m:
-                token_limit = int(m.group(1)) * 1000
+            kind = ""
+            surface = "unknown"
 
-        # Parse age: "13m ago", "1h ago", "just now", "<1m ago"
-        age_seconds = 0
-        if "just now" in age or "<1m" in age:
-            age_seconds = 0
-        else:
-            m = re.search(r'(\d+)([smhd])', age)
-            if m:
-                val = int(m.group(1))
-                unit = m.group(2)
-                multipliers = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
-                age_seconds = val * multipliers.get(unit, 60)
+        # Extract channel ID from discord keys
+        channel = ""
+        if "discord:channel:" in session_key:
+            channel = session_key.split("discord:channel:")[-1][:20]
 
-        # Status
-        status = "active" if age_seconds < 3600 else "idle"
-        if "aborted" in flags.lower():
-            status = "aborted"
-        elif "heartbeat" in key.lower():
-            status = "heartbeat"
+        # Get human-readable label
+        label = s.get("label", "")
 
         sessions.append({
-            "key": key,
+            "key": session_key[:80],
             "kind": kind,
             "age": age,
             "age_seconds": age_seconds,
-            "model": model,
+            "model": "",
             "surface": surface,
             "channel": channel,
-            "runtime": runtime,
-            "tokens_used": token_used,
-            "token_limit": token_limit,
-            "token_pct": token_pct,
-            "flags": flags,
-            "status": status,
+            "runtime": "",
+            "tokens_used": 0,
+            "token_limit": 0,
+            "token_pct": 0,
+            "flags": label,
+            "status": "active" if age_seconds < 3600 else "idle",
         })
 
-    return sessions
+    sessions.sort(key=lambda s: s.get("age_seconds", 999999))
+    return sessions[:50]
 
 
-def _parse_cron_list(raw):
-    """Parse `openclaw cron list` output into structured data."""
-    jobs = []
-    if not raw:
-        return jobs
+def _parse_cron_from_state():
+    """Build cron job list from jobs.json + jobs-state.json."""
+    jobs_data = _read_json(CRON_JOBS_FILE, {})
+    state_data = _read_json(CRON_STATE_FILE, {})
 
-    lines = raw.split("\n")
-    in_table = False
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if line.startswith("ID") and "Name" in line:
-            in_table = True
-            continue
-        if not in_table:
-            continue
+    raw_jobs = jobs_data.get("jobs", []) if isinstance(jobs_data, dict) else []
+    job_states = state_data.get("jobs", {}) if isinstance(state_data, dict) else {}
 
-        # Format: UUID  name  schedule  next  last  status  target  delivery  agent  model
-        # This is tricky to parse because fields can have spaces
-        # Strategy: split by UUID pattern first
-        parts = line.split(None, 9)
-        if len(parts) < 5:
-            continue
+    now_ms = int(time.time() * 1000)
+    result = []
 
-        job_id = parts[0]
-        # The name could be multi-word, so we need to find where the schedule starts
-        # Simple heuristic: find fields that look like schedules or timestamps
-        name_parts = []
-        schedule = ""
-        next_run = ""
-        last_run = ""
-        status = ""
-        target = ""
-        delivery = ""
-        agent = ""
-        model = ""
+    for j in raw_jobs:
+        job_id = j.get("id", "")
+        name = j.get("name", j.get("description", job_id[:8]))
+        enabled = j.get("enabled", True)
+        schedule = j.get("schedule", {})
 
-        # Try splitting: ID name... schedule next last status target delivery agent model
-        # Schedule patterns: "every Nm", "cron * * * * * *"
-        # Next/Last patterns: "in Nm", "Nh ago", "Nd ago", "<1m ago", "never"
+        # Human-readable schedule
+        sk = schedule.get("kind", "cron")
+        if sk == "cron":
+            schedule_text = schedule.get("expr", "")
+        elif sk == "every":
+            em = schedule.get("everyMs", 0)
+            if em >= 3600000:
+                schedule_text = f"every {em // 3600000}h"
+            elif em >= 60000:
+                schedule_text = f"every {em // 60000}m"
+            else:
+                schedule_text = f"every {em // 1000}s"
+        else:
+            schedule_text = sk
 
-        remaining = parts[1:]
-        # Find the schedule field (starts with 'every' or 'cron' or 'interval')
-        sched_idx = None
-        for i, p in enumerate(remaining):
-            if p in ("every", "cron", "interval", "at"):
-                sched_idx = i
-                break
+        # State
+        st = job_states.get(job_id, {}).get("state", {})
+        last_run = st.get("lastRunAtMs")
+        next_run = st.get("nextRunAtMs")
+        last_status = st.get("lastRunStatus", st.get("lastStatus", ""))
+        consecutive = st.get("consecutiveErrors", 0)
+        last_error = st.get("lastError", "")
 
-        if sched_idx is not None:
-            name_parts = remaining[:sched_idx]
-            after_name = remaining[sched_idx:]
+        # Determine status indicator
+        if not enabled:
+            display_status = "disabled"
+        elif last_status == "error" or consecutive > 0:
+            display_status = "error_recent" if consecutive < 3 else "error"
+        elif last_status == "ok":
+            display_status = "ok"
+        elif last_run is None:
+            display_status = "never_run"
+        else:
+            display_status = last_status or "unknown"
 
-            # Schedule + next + last + status
-            schedule = " ".join(after_name[:3]) if len(after_name) > 0 else ""
-            next_run = after_name[3] if len(after_name) > 3 else ""
-            last_run = after_name[4] if len(after_name) > 4 else ""
-            status = after_name[5] if len(after_name) > 5 else ""
-            target = after_name[6] if len(after_name) > 6 else ""
-            delivery = after_name[7] if len(after_name) > 7 else ""
-            agent = after_name[8] if len(after_name) > 8 else ""
-            model = after_name[9] if len(after_name) > 9 else ""
-
-        jobs.append({
+        result.append({
             "id": job_id,
-            "name": " ".join(name_parts) if name_parts else job_id[:8],
-            "schedule": schedule,
-            "next_run": next_run,
+            "name": name,
+            "enabled": enabled,
+            "schedule": schedule_text,
+            "schedule_raw": schedule,
             "last_run": last_run,
-            "last_status": status,
-            "target": target,
-            "delivery": delivery,
-            "agent": agent,
-            "model": model,
+            "next_run": next_run,
+            "last_status": display_status,
+            "last_error": last_error[:200] if last_error else "",
+            "consecutive_errors": consecutive,
+            "delivery_channel": "",
+            "delivery_to": "",
         })
 
-    return jobs
-
-
-def _parse_status(raw):
-    """Parse `openclaw status --json` output."""
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
+    return result
 
 
 def fetch_all(state: GatewayState):
-    """Fetch all data from openclaw CLI and update state."""
+    """Fetch all state from filesystem + HTTP health check."""
     try:
-        # Sessions
-        sessions_raw = _run_cli(["sessions"], timeout=15)
-        if sessions_raw:
-            sessions = _parse_sessions(sessions_raw)
-            state.update(sessions=sessions, connected=True)
-
-        # Cron jobs
-        cron_raw = _run_cli(["cron", "list"], timeout=10)
-        if cron_raw:
-            cron_jobs = _parse_cron_list(cron_raw)
-            state.update(cron_jobs=cron_jobs)
-
-        # Status
-        status_raw = _run_cli(["status", "--json"], timeout=10)
-        if status_raw:
-            status_data = _parse_status(status_raw)
-            state.update(
-                health={
-                    "status": "ok",
-                    "version": status_data.get("version"),
-                    "uptime": status_data.get("uptime"),
-                },
-                channels=status_data.get("channels", {}),
-                usage=status_data.get("usage", {}),
-            )
-
-        # Gateway health (simple HTTP check)
-        try:
-            import urllib.request
-            req = urllib.request.Request("http://127.0.0.1:18789/health")
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                h = json.loads(resp.read())
-                state.update(health={**state.health, "gateway_ok": h.get("ok", False)})
-        except Exception:
-            pass
-
+        # Gateway health check (HTTP, fast)
+        health = _check_health()
+        state.update(
+            connected=health.get("ok", False),
+            health={"gateway_ok": health.get("ok"), "status": health.get("status")},
+        )
     except Exception as e:
-        logger.error(f"fetch_all error: {e}")
-        state.update(connected=False, error=str(e))
+        state.update(connected=False, error=str(e)[:100])
 
+    try:
+        # Sessions from file
+        sessions_raw = _read_json(SESSIONS_FILE)
+        if sessions_raw:
+            sessions = _parse_sessions_file(sessions_raw)
+            state.update(sessions=sessions)
+        else:
+            state.update(sessions=[])
+    except Exception as e:
+        logger.debug(f"Sessions read error: {e}")
 
-# ── Background poller ─────────────────────────────────────────
+    try:
+        # Cron from state files
+        cron_jobs = _parse_cron_from_state()
+        if cron_jobs:
+            state.update(cron_jobs=cron_jobs)
+    except Exception as e:
+        logger.debug(f"Cron read error: {e}")
+
 
 class GatewayPoller:
-    """Periodically polls openclaw CLI for state updates."""
+    """Periodically reads state from filesystem."""
 
     def __init__(self, state: GatewayState, interval: int = 30):
         self.state = state
@@ -369,9 +282,7 @@ class GatewayPoller:
         self._running = False
 
     def _run_loop(self):
-        # Do an immediate fetch
         fetch_all(self.state)
-
         while self._running:
             time.sleep(self.interval)
             if not self._running:

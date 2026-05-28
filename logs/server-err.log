@@ -50,3 +50,31 @@ TypeError: argument of type 'HTTPStatus' is not iterable
 ----------------------------------------
 127.0.0.1 - - [27/May/2026 21:15:02] "GET /api/status HTTP/1.1" 200 -
 127.0.0.1 - - [27/May/2026 22:39:29] "GET /api/status HTTP/1.1" 200 -
+2026-05-27 23:19:24 [server] INFO: Starting Gateway WebSocket bridge...
+2026-05-27 23:19:24 [gateway_bridge] INFO: Gateway poller started (interval=30s)
+2026-05-27 23:19:24 [server] INFO: Gateway bridge started
+2026-05-27 23:19:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:19:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:19:24 [server] INFO: 🚀 Mission Control v2 on http://127.0.0.1:5555
+2026-05-27 23:19:24 [server] INFO:    Workspace: /Users/bigclaw/.openclaw/workspace
+2026-05-27 23:19:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:19:35 [server] INFO: API GET /api/status HTTP/1.1
+2026-05-27 23:19:44 [server] INFO: API GET /api/status HTTP/1.1
+2026-05-27 23:19:44 [server] INFO: API GET /api/status HTTP/1.1
+2026-05-27 23:19:54 [server] INFO: API GET /api/status HTTP/1.1
+2026-05-27 23:19:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:19:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:19:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:20:15 [server] INFO: API GET /api/status HTTP/1.1
+2026-05-27 23:20:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:20:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:20:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:20:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:20:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:20:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:21:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:21:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:21:24 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:21:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:21:54 [gateway_bridge] ERROR: openclaw CLI not found
+2026-05-27 23:21:54 [gateway_bridge] ERROR: openclaw CLI not found
